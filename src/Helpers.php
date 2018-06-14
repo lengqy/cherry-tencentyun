@@ -4,7 +4,6 @@ namespace Cherry\Tencentyun;
 
 Trait Helpers
 {
-
 	/** 
 	 * 构造访问REST服务器的url
 	 * @param $server_name 服务名
@@ -13,39 +12,49 @@ Trait Helpers
 	protected function getRequestUrl($service_name, $cmd_name)
 	{
 		return $service_name . '/' . $cmd_name
-			. '?usersig=' . $this->user_sign
-            . '&identifier=' . $this->identifier
+			. '?usersig=' . $this->admin_sign
+            . '&identifier=' . $this->admin_identifier
             . '&sdkappid=' . $this->sdkappid
             . '&contenttype=json';
 	}
 
 	/**
 	 * 获取sign
-	 * @param $cache_file  缓存文件地址
-	 * @param $sdkappid    App 在云通信控制台上获取的 Appid
-	 * @param $identifier  用户名(必须为 App 管理员帐号)
-	 * @param $private_pem 私钥文件路径
+	 * @param $cache_path  缓存文件路径
+	 * @param $identifier  用户名
 	 */
-	protected function getUserSignature($cache_file, $sdkappid, $identifier, $private_pem)
+	protected function getUserSignature($identifier)
 	{
-		if(file_exists($cache_file) && (time() - filemtime($cache_file)) <= $this->user_sign_expired_seconds)
+		$cache_file = $this->getUserSignatureCatchFile($identifier);
+		if(file_exists($cache_file) && (time() - filemtime($cache_file)) <= $this->sign_expired_seconds)
 			return file_get_contents($cache_file);
 			
-		return $this->makeUserSignature($cache_file, $sdkappid, $identifier, $private_pem);
+		return $this->makeUserSignature($cache_file, $identifier);
+	}
+
+	/**
+	 * 获取sign缓存文件
+	 * @param $identifier  用户名
+	 */
+	protected function getUserSignatureCatchFile($identifier)
+	{
+		$cache_path = $this->sign_cache_directory;
+		if (substr($cache_path, 0, -1) != '/' || substr($cache_path, 0, -1) != '\\')
+			$cache_path = $cache_path . DIRECTORY_SEPARATOR;
+
+		return $cache_path . 'tencentyun_sig_' . $identifier;
 	}
 
 	/**
 	 * 生成sign
 	 * @param $cache_file  缓存文件地址
-	 * @param $sdkappid    App 在云通信控制台上获取的 Appid
 	 * @param $identifier  用户名(必须为 App 管理员帐号)
-	 * @param $private_pem 私钥文件路径
 	 */
-	protected function makeUserSignature($cache_file, $sdkappid, $identifier, $private_pem)
+	protected function makeUserSignature($cache_file, $identifier)
 	{
 		$command = escapeshellarg($this->getToolPath())
-			. ' '. escapeshellarg($private_pem)
-			. ' ' . escapeshellarg($sdkappid)
+			. ' '. escapeshellarg($this->private_pem)
+			. ' ' . escapeshellarg($this->sdkappid)
 			. ' ' .escapeshellarg($identifier);
 		$ret = exec($command, $out, $status);
 		if ($status == -1)

@@ -16,22 +16,27 @@ class Tim
 	/**
 	 * 用户名(必须为 App 管理员帐号)
 	 */
-	private $identifier;
+	private $admin_identifier;
 
 	/**
-	 * 用户名对应的签名
+	 * 管理员签名
 	 */
-	private $user_sign;
+	private $admin_sign;
 
 	/**
-	 * 缓存文件创建的时间
+	 * 私钥文件路径
 	 */
-	private $user_sign_cache_create;
+	private $private_pem;
 
 	/**
-	 * 缓存文件失效时间
+	 * 签名缓存目录
 	 */
-	private $user_sign_expired_seconds;
+	private $sign_cache_directory;
+
+	/**
+	 * 密钥缓存失效时间
+	 */
+	private $sign_expired_seconds;
 
 	/**
 	 * \GuzzleHttp\Client
@@ -43,13 +48,14 @@ class Tim
 	 */
 	private static $tim;
 
-	private function __construct($sdkappid, $identifier, array $user_sign)
+	private function __construct($sdkappid, $admin_identifier, array $sign)
 	{
 		$this->sdkappid                  = $sdkappid;
-		$this->identifier                = $identifier;
-		$this->user_sign_expired_seconds = $user_sign['expired_days'] * 86400;
-		$this->user_sign                 = $this->getUserSignature($user_sign['cache_file'], $sdkappid, $identifier, $user_sign['private_pem']);
-		$this->user_sign_cache_create    = filemtime($user_sign['cache_file']);
+		$this->admin_identifier          = $admin_identifier;
+		$this->private_pem				 = $sign['private_pem'];
+		$this->sign_cache_directory      = $sign['cache_directory'];
+		$this->sign_expired_seconds 	 = $sign['expired_seconds'];
+		$this->admin_sign                = $this->getUserSignature($admin_identifier);
 
 		$this->client = new Client([
 		    'base_uri' => 'https://console.tim.qq.com/v4/',
@@ -67,31 +73,26 @@ class Tim
 
 		$config = include(dirname(__FILE__).'/../config/tencenttim.php');
 		$sdkappid   = $config['sdkappid'];
-		$identifier = $config['identifier'];
-		$user_sign  = [
-			'private_pem'  => $config['user_sign']['private_pem_path'],
-			'cache_file'   => $config['user_sign']['cache_file_path'],
-			'expired_days' => (int) $config['user_sign']['expired_days'],
+		$identifier = $config['admin_identifier'];
+		$sign  = [
+			'private_pem'     => $config['sign']['private_pem'],
+			'cache_directory' => $config['sign']['cache_directory'],
+			'expired_seconds' => (int) $config['sign']['expired_days'] * 86400,
 		];
-		return new self($sdkappid, $identifier, $user_sign);
+		return new self($sdkappid, $identifier, $sign);
 	}
 
 	/**
 	 * 获取sign
-	 * @return string
+	 * @param string $account 用户账号
+	 * @return string user_sign  密钥
+	 * @return int    expired_at 密钥失效时间 时间戳
 	 */
-	public function getUserSign()
+	public function getUserSign($account)
 	{
-		return $this->user_sign;
-	}
-
-	/**
-	 * 获取Sign失效时间
-	 * @return int timestamp
-	 */
-	public function getUserSignExpiredAt()
-	{
-		return $this->user_sign_cache_create + $this->user_sign_expired_seconds;
+		$user_sign  = $this->getUserSignature($account);
+		$expired_at = filemtime($this->getUserSignatureCatchFile($account)) + $this->sign_expired_seconds;
+		return compact('user_sign', 'expired_at');
 	}
 
 	/**
@@ -114,7 +115,7 @@ class Tim
 
 		$http_body = json_decode($http_body, true);
 		if (empty($http_body) || $http_body['ErrorCode'] !== 0)
-			throw new TencentyunException("用户注册失败", 2);
+			throw new TencentyunException("用户注册失败".$http_body['ErrorCode'].$http_body['ErrorInfo'], 2);
 
 		return true;
 	}
